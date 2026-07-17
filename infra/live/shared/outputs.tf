@@ -37,3 +37,13 @@ output "ecr_repository_url" {
   description = "URL of the shared application image repository."
   value       = module.ecr.repository_url
 }
+
+output "approved_image_parameter_name" {
+  description = "Name of the SSM parameter holding the staging-approved digest."
+  value       = aws_ssm_parameter.approved_image_digest.name
+}
+
+output "approved_image_parameter_arn" {
+  description = "ARN of the SSM parameter holding the staging-approved digest."
+  value       = aws_ssm_parameter.approved_image_digest.arn
+}

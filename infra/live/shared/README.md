@@ -10,7 +10,12 @@ S3-native lockfile.
 
 The ECR repository stores application images shared by both environments. It
 uses immutable tags, scan-on-push, AES256 encryption, and lifecycle retention
-controls.
+controls. An SSM Parameter Store value records the image digest approved by
+staging for production promotion.
 
-Later milestones add deployment IAM/OIDC and the approved image parameter to
-this stack as separate, reviewable changes.
+The parameter starts with the sentinel value `UNSET`. Deployment automation
+owns subsequent value changes, so Terraform ignores drift only for its value
+while continuing to manage the parameter itself.
+
+Later milestones add deployment IAM/OIDC to this stack as separate,
+reviewable changes.
