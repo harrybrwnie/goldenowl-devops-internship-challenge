@@ -14,3 +14,12 @@ module "network" {
   availability_zones  = local.availability_zones
   public_subnet_cidrs = var.public_subnet_cidrs
 }
+
+module "ecr" {
+  source = "../../modules/ecr"
+
+  repository_name               = var.ecr_repository_name
+  max_image_count               = 30
+  untagged_image_retention_days = 7
+  force_delete                  = false
+}

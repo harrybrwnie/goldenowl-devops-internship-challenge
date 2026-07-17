@@ -22,3 +22,18 @@ output "public_route_table_id" {
   description = "ID of the shared public route table."
   value       = module.network.public_route_table_id
 }
+
+output "ecr_repository_name" {
+  description = "Name of the shared application image repository."
+  value       = module.ecr.repository_name
+}
+
+output "ecr_repository_arn" {
+  description = "ARN of the shared application image repository."
+  value       = module.ecr.repository_arn
+}
+
+output "ecr_repository_url" {
+  description = "URL of the shared application image repository."
+  value       = module.ecr.repository_url
+}
