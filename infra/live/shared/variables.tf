@@ -27,3 +27,14 @@ variable "ecr_repository_name" {
   type        = string
   default     = "goldenowl-app"
 }
+
+variable "approved_image_parameter_name" {
+  description = "SSM parameter name used to store the staging-approved image digest."
+  type        = string
+  default     = "/goldenowl/approved-image-digest"
+
+  validation {
+    condition     = startswith(var.approved_image_parameter_name, "/")
+    error_message = "approved_image_parameter_name must be an absolute SSM parameter path."
+  }
+}
