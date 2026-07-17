@@ -1,0 +1,230 @@
+name: Deploy staging
+
+on:
+    push:
+        branches:
+            - staging
+    workflow_dispatch:
+
+permissions:
+    contents: read
+    id-token: write
+
+concurrency:
+    group: staging-deployment
+    cancel-in-progress: true
+
+env:
+    AWS_REGION: us-east-1
+    ECR_REPOSITORY: goldenowl-app
+    ECS_CLUSTER: goldenowl-staging-cluster
+    ECS_SERVICE: goldenowl-staging-service
+    ECS_TASK_FAMILY: goldenowl-staging
+    ECS_CONTAINER_NAME: app
+    APPROVED_DIGEST_PARAMETER: /goldenowl/approved-image-digest
+
+jobs:
+    deploy:
+        name: Build, verify, and deploy
+        runs-on: ubuntu-24.04
+        timeout-minutes: 45
+        environment: staging
+
+        steps:
+            - name: Check out repository
+              uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+            - name: Set up Node.js
+              uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22.23.1
+                  cache: npm
+                  cache-dependency-path: src/package-lock.json
+
+            - name: Run application quality gates
+              working-directory: src
+              run: |
+                  npm ci
+                  npm run format:check
+                  npm run lint:check
+                  npm test -- --ci --runInBand
+                  npm audit --omit=dev --audit-level=high
+
+            - name: Lint Dockerfile
+              uses: hadolint/hadolint-action@3fc49fb50d59c6ab7917a2e4195dba633e515b29 # v3.2.0
+              with:
+                  dockerfile: src/Dockerfile
+                  failure-threshold: warning
+
+            - name: Scan repository for secrets
+              uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+              with:
+                  scan-type: fs
+                  scan-ref: .
+                  scanners: secret
+                  format: table
+                  exit-code: 1
+
+            - name: Validate staging environment variables
+              env:
+                  AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+                  STAGING_URL: ${{ vars.STAGING_URL }}
+              run: |
+                  test -n "$AWS_ROLE_ARN" || { echo "Missing staging variable AWS_ROLE_ARN" >&2; exit 1; }
+                  test -n "$STAGING_URL" || { echo "Missing staging variable STAGING_URL" >&2; exit 1; }
+
+            - name: Configure AWS credentials with OIDC
+              uses: aws-actions/configure-aws-credentials@517a711dbcd0e402f90c77e7e2f81e849156e31d # v6.2.2
+              with:
+                  role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+                  aws-region: ${{ env.AWS_REGION }}
+                  role-session-name: goldenowl-staging-${{ github.run_id }}
+
+            - name: Log in to Amazon ECR
+              id: ecr-login
+              uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+
+            - name: Resolve image tag
+              id: image
+              shell: bash
+              run: |
+                  tagged_ref="${{ steps.ecr-login.outputs.registry }}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+                  digest=$(aws ecr batch-get-image \
+                    --repository-name "$ECR_REPOSITORY" \
+                    --image-ids imageTag="$GITHUB_SHA" \
+                    --query 'images[0].imageId.imageDigest' \
+                    --output text)
+
+                  if [[ "$digest" == "None" ]]; then
+                    echo "exists=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "exists=true" >> "$GITHUB_OUTPUT"
+                  fi
+                  echo "tagged_ref=$tagged_ref" >> "$GITHUB_OUTPUT"
+
+            - name: Build image once
+              if: steps.image.outputs.exists == 'false'
+              run: docker build --pull --tag "${{ steps.image.outputs.tagged_ref }}" ./src
+
+            - name: Pull existing immutable image
+              if: steps.image.outputs.exists == 'true'
+              run: docker pull "${{ steps.image.outputs.tagged_ref }}"
+
+            - name: Scan image vulnerabilities
+              uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+              with:
+                  scan-type: image
+                  image-ref: ${{ steps.image.outputs.tagged_ref }}
+                  scanners: vuln
+                  severity: HIGH,CRITICAL
+                  ignore-unfixed: false
+                  format: table
+                  exit-code: 1
+
+            - name: Generate SPDX JSON SBOM
+              uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+              with:
+                  scan-type: image
+                  image-ref: ${{ steps.image.outputs.tagged_ref }}
+                  scanners: vuln
+                  format: spdx-json
+                  output: sbom.spdx.json
+                  exit-code: 0
+
+            - name: Upload SBOM
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: staging-sbom-${{ github.sha }}
+                  path: sbom.spdx.json
+                  if-no-files-found: error
+                  retention-days: 14
+
+            - name: Push immutable image
+              if: steps.image.outputs.exists == 'false'
+              run: docker push "${{ steps.image.outputs.tagged_ref }}"
+
+            - name: Resolve image digest
+              id: digest
+              shell: bash
+              run: |
+                  digest=$(aws ecr describe-images \
+                    --repository-name "$ECR_REPOSITORY" \
+                    --image-ids imageTag="$GITHUB_SHA" \
+                    --query 'imageDetails[0].imageDigest' \
+                    --output text)
+                  digest_ref="${{ steps.ecr-login.outputs.registry }}/${ECR_REPOSITORY}@${digest}"
+                  echo "digest=$digest" >> "$GITHUB_OUTPUT"
+                  echo "digest_ref=$digest_ref" >> "$GITHUB_OUTPUT"
+
+            - name: Install Cosign
+              uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+            - name: Sign image when signature is absent
+              shell: bash
+              env:
+                  DIGEST_REF: ${{ steps.digest.outputs.digest_ref }}
+              run: |
+                  identity='^https://github.com/harrybrwnie/goldenowl-devops-internship-challenge/.github/workflows/deploy-staging.yml@refs/heads/staging$'
+                  issuer='https://token.actions.githubusercontent.com'
+                  if cosign verify --certificate-identity-regexp "$identity" --certificate-oidc-issuer "$issuer" "$DIGEST_REF" >/dev/null 2>&1; then
+                    echo "Existing staging signature verified."
+                  else
+                    cosign sign --yes "$DIGEST_REF"
+                  fi
+
+            - name: Verify image signature
+              env:
+                  DIGEST_REF: ${{ steps.digest.outputs.digest_ref }}
+              run: |
+                  cosign verify \
+                    --certificate-identity-regexp '^https://github.com/harrybrwnie/goldenowl-devops-internship-challenge/.github/workflows/deploy-staging.yml@refs/heads/staging$' \
+                    --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+                    "$DIGEST_REF"
+
+            - name: Download current task definition
+              run: |
+                  aws ecs describe-task-definition \
+                    --task-definition "$ECS_TASK_FAMILY" \
+                    --query taskDefinition \
+                    > task-definition.json
+
+            - name: Render task definition with image digest
+              id: render-task
+              uses: aws-actions/amazon-ecs-render-task-definition@138c24f321fdbdf7edee4a685519d253cae2cdea # v1.9.0
+              with:
+                  task-definition: task-definition.json
+                  container-name: ${{ env.ECS_CONTAINER_NAME }}
+                  image: ${{ steps.digest.outputs.digest_ref }}
+
+            - name: Deploy task definition to staging
+              uses: aws-actions/amazon-ecs-deploy-task-definition@c465972ecbd160473f22e683363b422a5412a3de # v2.6.3
+              with:
+                  task-definition: ${{ steps.render-task.outputs.task-definition }}
+                  service: ${{ env.ECS_SERVICE }}
+                  cluster: ${{ env.ECS_CLUSTER }}
+                  wait-for-service-stability: true
+
+            - name: Smoke test staging
+              run: ./scripts/smoke-test.sh "${{ vars.STAGING_URL }}"
+
+            - name: Approve image digest
+              env:
+                  DIGEST_REF: ${{ steps.digest.outputs.digest_ref }}
+              run: |
+                  aws ssm put-parameter \
+                    --name "$APPROVED_DIGEST_PARAMETER" \
+                    --type String \
+                    --value "$DIGEST_REF" \
+                    --overwrite
+
+            - name: Write deployment summary
+              env:
+                  DIGEST_REF: ${{ steps.digest.outputs.digest_ref }}
+              run: |
+                  {
+                    echo "## Staging deployment"
+                    echo
+                    echo "- Image: \`$DIGEST_REF\`"
+                    echo "- Endpoint: ${{ vars.STAGING_URL }}"
+                    echo "- Approved parameter: \`$APPROVED_DIGEST_PARAMETER\`"
+                  } >> "$GITHUB_STEP_SUMMARY"
