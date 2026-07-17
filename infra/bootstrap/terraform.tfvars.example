@@ -1,0 +1,6 @@
+aws_region        = "us-east-1"
+state_bucket_name = "goldenowl-devops-<unique-suffix>-tfstate"
+owner             = "<github-username>"
+
+# Only enable during intentional final cleanup.
+force_destroy = false
