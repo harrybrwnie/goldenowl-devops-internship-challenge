@@ -17,5 +17,8 @@ The parameter starts with the sentinel value `UNSET`. Deployment automation
 owns subsequent value changes, so Terraform ignores drift only for its value
 while continuing to manage the parameter itself.
 
-Later milestones add deployment IAM/OIDC to this stack as separate,
-reviewable changes.
+Separate staging and production IAM roles trust the existing GitHub Actions
+OIDC provider. Their trust policies require the immutable repository identity,
+the `sts.amazonaws.com` audience, and the matching GitHub Environment. Inline
+policies scope ECR, ECS, SSM, and task-role passing to the resources used by
+each environment.
