@@ -47,3 +47,13 @@ output "approved_image_parameter_arn" {
   description = "ARN of the SSM parameter holding the staging-approved digest."
   value       = aws_ssm_parameter.approved_image_digest.arn
 }
+
+output "staging_deployment_role_arn" {
+  description = "ARN assumed by the staging GitHub Actions deployment."
+  value       = module.github_deployment_iam.staging_role_arn
+}
+
+output "production_deployment_role_arn" {
+  description = "ARN assumed by the production GitHub Actions deployment."
+  value       = module.github_deployment_iam.production_role_arn
+}

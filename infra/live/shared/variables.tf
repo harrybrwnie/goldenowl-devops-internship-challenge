@@ -38,3 +38,25 @@ variable "approved_image_parameter_name" {
     error_message = "approved_image_parameter_name must be an absolute SSM parameter path."
   }
 }
+
+variable "github_repository_owner" {
+  description = "Owner of the GitHub repository allowed to deploy."
+  type        = string
+  default     = "harrybrwnie"
+}
+
+variable "github_repository_name" {
+  description = "Name of the GitHub repository allowed to deploy."
+  type        = string
+  default     = "goldenowl-devops-internship-challenge"
+}
+
+variable "github_repository_owner_id" {
+  description = "Immutable numeric GitHub repository owner ID used in OIDC subjects."
+  type        = string
+}
+
+variable "github_repository_id" {
+  description = "Immutable numeric GitHub repository ID used in OIDC subjects."
+  type        = string
+}
