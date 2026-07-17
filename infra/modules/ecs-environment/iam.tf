@@ -1,0 +1,25 @@
+data "aws_iam_policy_document" "ecs_tasks_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "task_execution" {
+  name               = "goldenowl-${var.environment}-task-execution-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
+}
+
+resource "aws_iam_role_policy_attachment" "task_execution" {
+  role       = aws_iam_role.task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role" "task" {
+  name               = "goldenowl-${var.environment}-task-role"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_trust.json
+}
