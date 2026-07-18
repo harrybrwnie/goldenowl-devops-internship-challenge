@@ -1,0 +1,14 @@
+aws_region = "us-east-1"
+owner      = "<github-username>"
+
+vpc_cidr           = "10.0.0.0/16"
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+
+ecr_repository_name = "goldenowl-app"
+
+approved_image_parameter_name = "/goldenowl/approved-image-digest"
+
+github_repository_owner    = "<github-username>"
+github_repository_name     = "goldenowl-devops-internship-challenge"
+github_repository_owner_id = "<github-owner-id>"
+github_repository_id       = "<github-repository-id>"

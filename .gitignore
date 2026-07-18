@@ -1,0 +1,49 @@
+# Node.js dependencies and generated output
+node_modules/
+build/
+coverage/
+.nyc_output/
+*.log
+npm-debug.log*
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Terraform working files and state
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfplan
+plan.out
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+backend.hcl
+!backend.hcl.example
+
+# Test, security, and supply-chain artifacts
+reports/
+sbom*.json
+trivy*.json
+
+# Editor and operating-system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Docs
+*-docs/

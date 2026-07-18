@@ -1,0 +1,4 @@
+aws_region        = "us-east-1"
+owner             = "<github-username>"
+state_bucket_name = "goldenowl-devops-<unique-suffix>-tfstate"
+container_image   = "<account-id>.dkr.ecr.us-east-1.amazonaws.com/goldenowl-app@sha256:<digest>"
