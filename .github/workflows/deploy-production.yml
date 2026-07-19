@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - master
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - '.github/workflows/deploy-staging.yml'
+      - '.github/workflows/deploy-production.yml'
   workflow_dispatch:
 
 permissions:
